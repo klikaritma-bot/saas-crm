@@ -21,7 +21,7 @@
 
         /* Login Screen Overlay */
         #login-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-color); z-index: 10000; display: flex; align-items: center; justify-content: center; }
-        .login-card { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); width: 100%; max-width: 400px; text-align: center; }
+        .login-card { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); width: 100%; max-width: 400px; text-align: center; margin: 20px; }
         
         /* Sidebar Styling (Desktop) */
         .sidebar { height: 100vh; width: 260px; position: fixed; top: 0; left: 0; background: var(--primary); color: white; padding-top: 20px; transition: transform 0.3s; z-index: 1050; }
@@ -73,9 +73,8 @@
             <p class="text-muted small mb-4">Sistem Manajemen Penjualan & Proyek</p>
             
             <div class="text-start mb-3">
-                <label class="form-label fw-bold">Kode Lisensi / Database ID</label>
+                <label class="form-label fw-bold">Kode Lisensi</label>
                 <input type="text" id="inputDbId" class="form-control form-control-lg" placeholder="Masukkan ID Lisensi Anda...">
-                <small class="text-muted mt-2 d-block"><i class="bi bi-info-circle"></i> Temukan ID ini pada URL file Spreadsheet Master Anda.</small>
             </div>
             
             <button class="btn btn-primary w-100 py-2 fs-5 fw-bold" style="background: var(--primary);" onclick="loginSaaS()">
@@ -178,6 +177,7 @@
         </div>
     </div>
 
+    <!-- Modals -->
     <div class="modal fade" id="leadModal" tabindex="-1">
         <div class="modal-dialog modal-lg modal-dialog-centered">
             <div class="modal-content border-0 shadow">
@@ -212,6 +212,7 @@
         </div>
     </div>
 
+    <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -219,7 +220,7 @@
 
     <script>
         let db = { leads: [], pipeline: [], followup: [] };
-        let userDbId = localStorage.getItem("klikcrm_db_id"); // Cek apakah sudah pernah login
+        let userDbId = localStorage.getItem("klikcrm_db_id"); 
         let leadModalInstance, logModalInstance, funnelChartInstance;
         const STAGES = ["Prospecting", "Need Analysis", "Presentation", "Proposal Sent", "Negotiation", "Won", "Lost"];
 
@@ -227,7 +228,6 @@
             leadModalInstance = new bootstrap.Modal(document.getElementById('leadModal'));
             logModalInstance = new bootstrap.Modal(document.getElementById('logModal'));
             
-            // Cek status login
             if (userDbId) {
                 document.getElementById('login-screen').style.display = 'none';
                 document.getElementById('app-container').style.display = 'block';
@@ -235,18 +235,17 @@
             }
         });
 
-        // --- SISTEM SAAS: FUNGSI API CALL KE GOOGLE APPS SCRIPT ---
+        // --- SISTEM SAAS: FUNGSI API CALL DENGAN PENANGANAN ERROR EXTRA ---
         async function apiCall(actionName, dataPayload = null) {
-            if(API_URL === "URL_GAS_ANDA_DISINI") {
-                Swal.fire("Error", "Anda belum memasukkan URL API Google Apps Script di kode HTML", "error");
+            if(API_URL === "URL_GAS_ANDA_DISINI" || !API_URL) {
+                Swal.fire("Error Konfigurasi", "Anda belum memasukkan URL API Google Apps Script di kode HTML.", "error");
                 return { status: "error" };
             }
             
             try {
-                // Konfigurasi fetch khusus untuk melewati CORS blokir Google
                 let response = await fetch(API_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Wajib text/plain
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Penting untuk GAS Bypass CORS
                     body: JSON.stringify({
                         action: actionName,
                         dbId: userDbId,
@@ -254,13 +253,21 @@
                     })
                 });
                 
-                let result = await response.json();
-                if(result.status === "error") throw new Error(result.message);
+                // Baca sebagai teks dulu untuk mengecek apakah GAS mengembalikan error HTML
+                let textRes = await response.text(); 
                 
-                return result;
+                try {
+                    let result = JSON.parse(textRes); // Ubah ke JSON
+                    if(result.status === "error") throw new Error(result.message);
+                    return result;
+                } catch(e) {
+                    console.error("Respon Server Bukan JSON:", textRes);
+                    throw new Error("Akses ditolak. Pastikan ID Spreadsheet valid dan sudah dibuat oleh admin.");
+                }
+                
             } catch (error) {
-                console.error(error);
-                Swal.fire("API Error", error.message || "Gagal menghubungi database pusat", "error");
+                console.error("API Call Error:", error);
+                Swal.fire("Koneksi Gagal", error.message, "error");
                 return { status: "error" };
             }
         }
@@ -268,12 +275,11 @@
         // --- SISTEM SAAS: LOGIN & LOGOUT ---
         async function loginSaaS() {
             const inputId = document.getElementById('inputDbId').value.trim();
-            if(!inputId) return Swal.fire("Peringatan", "Masukkan ID Database", "warning");
+            if(!inputId) return Swal.fire("Peringatan", "Masukkan ID Lisensi (Spreadsheet ID) terlebih dahulu", "warning");
 
             userDbId = inputId;
             startLoading("Memverifikasi Lisensi...");
             
-            // Tembak API setup/get awal untuk ngecek apakah ID-nya valid/ada
             let res = await apiCall("setupDatabase");
             endLoading();
 
@@ -286,7 +292,7 @@
                 renderUI();
                 Swal.fire({toast:true, position:'top-end', icon:'success', title:'Login Berhasil', showConfirmButton:false, timer:2000});
             } else {
-                userDbId = null; // Reset jika gagal
+                userDbId = null; // Reset jika gagal agar tidak stuck
             }
         }
 
@@ -304,11 +310,13 @@
             if(res.status === "success") {
                 db = JSON.parse(res.data);
                 renderUI();
+            } else {
+                logoutSaaS(); // Force logout jika data gagal di-load ulang (Lisensi dicabut)
             }
             endLoading();
         }
 
-        // --- LOGIKA UI (Sama seperti versi sebelumnya, disesuaikan untuk memanggil apiCall) ---
+        // --- LOGIKA UI (Fungsi Render) ---
         function formatRupiah(number) { return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(number); }
         function startLoading(text) { document.getElementById('loading-text').innerText=text; document.getElementById('loading-overlay').style.display='flex'; }
         function endLoading() { document.getElementById('loading-overlay').style.display='none'; }
@@ -328,14 +336,27 @@
 
         function renderUI() { renderDashboard(); renderLeadsTable(); renderFollowUpTable(); renderKanbanBoard(); renderProjectsTable(); }
 
-        // --- (Isi fungsi Render sama persis dengan yang kemarin) ---
         function renderDashboard() {
             document.getElementById('dash-leads').innerText = db.leads.length;
             document.getElementById('dash-proposals').innerText = db.pipeline.filter(p => p.stage === 'Proposal Sent' || p.stage === 'Negotiation').length;
             const totalWon = db.pipeline.filter(p => p.stage === 'Won').length;
             document.getElementById('dash-winrate').innerText = db.leads.length > 0 ? Math.round((totalWon / db.leads.length) * 100) + '%' : '0%';
             document.getElementById('dash-revenue').innerText = formatRupiah(db.pipeline.reduce((sum, item) => sum + Number(item.value || 0), 0));
-            // ... (KODE CHART JS) ...
+            
+            const ctx = document.getElementById('funnelChart').getContext('2d');
+            const stageCounts = STAGES.map(stage => db.pipeline.filter(p => p.stage === stage).length);
+            const barColors = ['#94a3b8', '#60a5fa', '#3b82f6', '#8b5cf6', '#f59e0b', '#10b981', '#ef4444'];
+
+            if(funnelChartInstance) funnelChartInstance.destroy();
+            funnelChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: STAGES, datasets: [{ data: stageCounts, backgroundColor: barColors, borderRadius: 6 }] },
+                options: {
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { grid: { display: false } } }
+                }
+            });
         }
 
         function renderLeadsTable() {
@@ -346,8 +367,8 @@
                 <button class="btn btn-sm btn-light text-danger" onclick="deleteLead('${lead.id}')"><i class="bi bi-trash"></i></button></td></tr>`;
             });
         }
-        function renderFollowUpTable() { /* Sama seperti kemarin */ }
-        function renderProjectsTable() { /* Sama seperti kemarin */ }
+        function renderFollowUpTable() { /* Sama seperti sebelumnya */ }
+        function renderProjectsTable() { /* Sama seperti sebelumnya */ }
 
         function renderKanbanBoard() {
             const board = document.getElementById('kanban-board'); board.innerHTML = '';
@@ -389,7 +410,7 @@
             };
             startLoading("Menyimpan...");
             let res = await apiCall("saveLead", data);
-            if(res.status === "success") { db = JSON.parse(res.data); leadModalInstance.hide(); renderUI(); Swal.fire('Berhasil', 'Tersimpan ke Cloud', 'success'); }
+            if(res.status === "success") { db = JSON.parse(res.data); leadModalInstance.hide(); renderUI(); Swal.fire('Berhasil', 'Tersimpan ke Database', 'success'); }
             endLoading();
         }
 
@@ -401,8 +422,6 @@
                 endLoading();
             }
         }
-        
-        // ... (Fungsi log followup diubah serupa menggunakan await apiCall("saveLead", leadObj) )
     </script>
 </body>
 </html>
