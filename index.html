@@ -275,7 +275,7 @@
                 loadData();
             }
         });
-
+        // --- SISTEM SAAS: FUNGSI API CALL DENGAN PENANGANAN ERROR EXTRA ---
         async function apiCall(actionName, dataPayload = null) {
             if(!API_URL || API_URL === "URL_GAS_ANDA_DISINI") { Swal.fire("Error Konfigurasi", "Masukkan URL API di kode HTML", "error"); return { status: "error" }; }
             try {
@@ -288,7 +288,7 @@
                     let result = JSON.parse(textRes); 
                     if(result.status === "error") throw new Error(result.message);
                     return result;
-                } catch(e) { throw new Error("Akses ditolak. Cek ID Spreadsheet Anda."); }
+                } catch(e) { throw new Error(textRes.includes("Script function not found") ? "API Salah/Belum di Deploy" : "Akses ditolak. Pastikan Lisensi Valid."); }
             } catch (error) { Swal.fire("Gagal", error.message, "error"); return { status: "error" }; }
         }
 
@@ -345,22 +345,51 @@
         async function loginSaaS() {
             const inputId = document.getElementById('inputDbId').value.trim();
             if(!inputId) return Swal.fire("Peringatan", "Masukkan ID Lisensi", "warning");
-            userDbId = inputId; startLoading("Memverifikasi Lisensi...");
-            let res = await apiCall("setupDatabase"); endLoading();
-            if(res.status === "success") {
-                localStorage.setItem("klikcrm_db_id", userDbId); db = JSON.parse(res.data);
-                document.getElementById('login-screen').style.display = 'none'; document.getElementById('app-container').style.display = 'block';
-                applyClientSettings(); renderUI();
-            } else { userDbId = null; }
+            userDbId = inputId; 
+            startLoading("Memverifikasi Lisensi...");
+            
+            try {
+                let res = await apiCall("setupDatabase"); 
+                if(res.status === "success") {
+                    localStorage.setItem("klikcrm_db_id", userDbId); 
+                    db = JSON.parse(res.data);
+                    document.getElementById('login-screen').style.display = 'none'; 
+                    document.getElementById('app-container').style.display = 'block';
+                    applyClientSettings(); 
+                    renderUI();
+                } else { 
+                    userDbId = null; 
+                }
+            } catch (e) {
+                userDbId = null;
+            } finally {
+                endLoading();
+            }
         }
 
-        function logoutSaaS() { localStorage.removeItem("klikcrm_db_id"); userDbId = null; window.location.reload(); }
+        function logoutSaaS() { 
+            localStorage.removeItem("klikcrm_db_id"); 
+            userDbId = null; 
+            document.getElementById('app-container').style.display = 'none';
+            document.getElementById('login-screen').style.display = 'flex';
+        }
 
         async function loadData() {
-            startLoading("Sinkronisasi..."); let res = await apiCall("getAllData");
-            if(res.status === "success") { db = JSON.parse(res.data); applyClientSettings(); renderUI(); } 
-            else { logoutSaaS(); }
-            endLoading();
+            startLoading("Sinkronisasi..."); 
+            try {
+                let res = await apiCall("getAllData");
+                if(res.status === "success") { 
+                    db = JSON.parse(res.data); 
+                    applyClientSettings(); 
+                    renderUI(); 
+                } else { 
+                    logoutSaaS(); 
+                }
+            } catch (e) {
+                logoutSaaS();
+            } finally {
+                endLoading();
+            }
         }
 
         /* --- FITUR WHITE-LABELING --- */
