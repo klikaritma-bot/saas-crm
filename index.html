@@ -275,6 +275,7 @@
                 loadData();
             }
         });
+        
         // --- SISTEM SAAS: FUNGSI API CALL DENGAN PENANGANAN ERROR EXTRA ---
         async function apiCall(actionName, dataPayload = null) {
             if(!API_URL || API_URL === "URL_GAS_ANDA_DISINI") { Swal.fire("Error Konfigurasi", "Masukkan URL API di kode HTML", "error"); return { status: "error" }; }
@@ -286,10 +287,19 @@
                 let textRes = await response.text(); 
                 try {
                     let result = JSON.parse(textRes); 
-                    if(result.status === "error") throw new Error(result.message);
+                    if(result.status === "error") {
+                        // Jangan throw error, tapi tampilkan pesan asli dari Server
+                        Swal.fire("Respon Server", result.message, "error");
+                        return result;
+                    }
                     return result;
-                } catch(e) { throw new Error(textRes.includes("Script function not found") ? "API Salah/Belum di Deploy" : "Akses ditolak. Pastikan Lisensi Valid."); }
-            } catch (error) { Swal.fire("Gagal", error.message, "error"); return { status: "error" }; }
+                } catch(e) { 
+                    throw new Error(textRes.includes("Script function not found") ? "API Salah/Belum di Deploy" : "Response tidak valid dari server: " + textRes.substring(0, 50)); 
+                }
+            } catch (error) { 
+                Swal.fire("Gagal", error.message, "error"); 
+                return { status: "error" }; 
+            }
         }
 
         /* --- ADMIN PANEL SYSTEM --- */
@@ -411,7 +421,12 @@
             startLoading("Menyimpan...");
             let res = await apiCall("saveSettings", {appName: name});
             endLoading();
-            if(res.status === "success") { db = JSON.parse(res.data); applyClientSettings(); settingsModalInstance.hide(); }
+            if(res.status === "success") { 
+                db = JSON.parse(res.data); 
+                applyClientSettings(); 
+                settingsModalInstance.hide(); 
+                Swal.fire('Berhasil', 'Nama Aplikasi Berhasil Diubah', 'success');
+            }
         }
 
         /* --- FITUR EXPORT TO EXCEL --- */
